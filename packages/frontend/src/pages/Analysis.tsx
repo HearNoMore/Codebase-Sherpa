@@ -2,14 +2,26 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAnalysisStatus } from "../hooks/useAnalysisStatus";
 import ProgressTracker from "../components/ProgressTracker";
+import Overview from "../components/Overview";
+import FileExplorer from "../components/FileExplorer";
 import { apiUrl } from "../lib/api";
 import type { AnalysisResult } from "../types/analysis";
+
+type Tab = "overview" | "architecture" | "files" | "contribute";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "overview",     label: "Overview" },
+  { id: "architecture", label: "Architecture" },
+  { id: "files",        label: "Files" },
+  { id: "contribute",   label: "Contribute" },
+];
 
 export default function Analysis() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const { status, error: pollError } = useAnalysisStatus(jobId);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   // Fetch full results once the job is done
   useEffect(() => {
@@ -78,60 +90,83 @@ export default function Analysis() {
     );
   }
 
-  // Done — full dashboard (Days 4–6 will fill this in)
+  // Done — full dashboard
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div>
-          <button onClick={() => navigate("/")} className="text-xs text-gray-500 hover:text-gray-300 mb-1 block">
-            ← Home
-          </button>
-          <h1 className="text-lg font-bold font-mono">
-            {result?.repoName ?? status.jobId}
-          </h1>
-          {result && (
-            <p className="text-sm text-gray-400">{result.analysis.overview.purpose}</p>
-          )}
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      {/* Header */}
+      <header className="border-b border-gray-800 px-6 py-4 flex-shrink-0">
+        <div className="max-w-6xl mx-auto flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <button onClick={() => navigate("/")} className="text-xs text-gray-500 hover:text-gray-300 mb-1 block">
+              ← Home
+            </button>
+            <h1 className="text-lg font-bold font-mono truncate">
+              {result?.repoName ?? status.jobId}
+            </h1>
+            {result && (
+              <p className="text-sm text-gray-400 mt-0.5">{result.analysis.overview.purpose}</p>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-10">
+      {/* Tab bar */}
+      <nav className="border-b border-gray-800 flex-shrink-0">
+        <div className="max-w-6xl mx-auto px-6 flex gap-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={[
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
+                activeTab === tab.id
+                  ? "border-indigo-500 text-indigo-300"
+                  : "border-transparent text-gray-500 hover:text-gray-300",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Tab content */}
+      <main className="flex-1 overflow-hidden">
         {result ? (
-          <div className="space-y-6">
-            <section className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-3">Overview</h2>
-              <p className="text-gray-300 leading-relaxed">{result.analysis.overview.summary}</p>
-            </section>
+          <div className="h-full max-w-6xl mx-auto px-6 py-8">
+            {activeTab === "overview" && (
+              <Overview analysis={result.analysis} repoUrl={result.repoUrl} />
+            )}
 
-            <section className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-3">Tech Stack</h2>
-              <div className="flex flex-wrap gap-2">
-                {result.analysis.overview.techStack.map((t) => (
-                  <span key={t.name} className="px-3 py-1 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300 text-xs font-medium">
-                    {t.name}
-                  </span>
-                ))}
+            {activeTab === "architecture" && (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div className="text-4xl mb-4">🏗️</div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-2">Architecture Diagram</h3>
+                <p className="text-sm text-gray-500">Coming in Day 5 — interactive React Flow diagram</p>
               </div>
-            </section>
+            )}
 
-            <section className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-3">Stats</h2>
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  ["Files", result.analysis.overview.stats.totalFiles],
-                  ["Lines", result.analysis.overview.stats.totalLines.toLocaleString()],
-                  ["Analyzed", result.analysis.overview.stats.analyzedFiles],
-                ].map(([label, value]) => (
-                  <div key={label} className="text-center">
-                    <div className="text-2xl font-bold text-white">{value}</div>
-                    <div className="text-xs text-gray-500 mt-1">{label}</div>
-                  </div>
-                ))}
+            {activeTab === "files" && (
+              <div className="h-full" style={{ minHeight: "60vh" }}>
+                <FileExplorer
+                  tree={result.analysis.fileTree}
+                  fileAnalyses={result.analysis.fileAnalyses}
+                />
               </div>
-            </section>
+            )}
+
+            {activeTab === "contribute" && (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div className="text-4xl mb-4">🤝</div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-2">Contributor Guide</h3>
+                <p className="text-sm text-gray-500">Coming in Day 6 — setup, workflow, and gotchas</p>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="text-gray-500 text-sm animate-pulse text-center">Loading results…</div>
+          <div className="flex items-center justify-center h-32">
+            <div className="text-gray-500 text-sm animate-pulse">Loading results…</div>
+          </div>
         )}
       </main>
     </div>
