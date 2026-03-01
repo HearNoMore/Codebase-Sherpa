@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.db
+*.db-journal
+.env
+.env.local
+packages/backend/src/generated/
+packages/backend/prisma/dev.db
+packages/backend/prisma/*.db
+/tmp/
+*.tsbuildinfo
