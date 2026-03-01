@@ -53,6 +53,36 @@ async function removeDir(dirPath: string): Promise<void> {
 }
 
 /**
+ * Checks whether the repository URL resolves to an accessible public repo.
+ * GitHub returns 404 for both non-existent and private repos when unauthenticated,
+ * so this is as precise as we can get without credentials.
+ */
+async function preflightCheck(owner: string, repo: string, repoUrl: string): Promise<void> {
+  try {
+    const res = await fetch(`https://github.com/${owner}/${repo}`, {
+      method: "HEAD",
+      redirect: "follow",
+    });
+    if (res.status === 404) {
+      throw new ClonerError(
+        `Repository not found or is private: ${repoUrl}`,
+        "not_found"
+      );
+    }
+    if (res.status === 403) {
+      throw new ClonerError(
+        "Repository is private or requires authentication. Only public repositories are supported.",
+        "private_repo"
+      );
+    }
+    // Any other status (200, 301, etc.) — allow the clone to proceed
+  } catch (err) {
+    if (err instanceof ClonerError) throw err;
+    // Network error during preflight — proceed optimistically; clone will surface the real error
+  }
+}
+
+/**
  * Clones a public GitHub repository into a temporary directory.
  * Returns the path to the cloned directory (without .git).
  * Caller is responsible for cleanup via `cleanupRepo`.
@@ -63,15 +93,26 @@ export async function cloneRepo(repoUrl: string): Promise<string> {
     throw new ClonerError(`Invalid GitHub URL: ${repoUrl}`, "invalid_url");
   }
 
+  // Preflight: verify the repo is accessible before starting a potentially
+  // slow git clone that will fail with an ambiguous "could not read" error.
+  await preflightCheck(parsed.owner, parsed.repo, repoUrl);
+
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "sherpa-"));
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLONE_TIMEOUT_MS);
 
   try {
+    // -c credential.helper= disables any credential helper so git never prompts
+    // for a username/password and instead lets the server respond with its own
+    // error (e.g. "Repository not found").  GIT_TERMINAL_PROMPT=0 is an extra
+    // guard that prevents git from opening an interactive prompt on CI runners.
     await execAsync(
-      `git clone --depth 1 --single-branch ${repoUrl} ${tmpDir}`,
-      { signal: controller.signal }
+      `git -c credential.helper= clone --depth 1 --single-branch ${repoUrl} ${tmpDir}`,
+      {
+        signal: controller.signal,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      }
     );
   } catch (err: unknown) {
     await removeDir(tmpDir);
@@ -81,6 +122,8 @@ export async function cloneRepo(repoUrl: string): Promise<string> {
         throw new ClonerError("Clone timed out after 60 seconds", "timeout");
       }
       const msg = err.message.toLowerCase();
+      // Check "not found" before "could not read" — GitHub returns
+      // "Repository not found" for repos that don't exist, even without auth.
       if (msg.includes("not found") || msg.includes("repository not found")) {
         throw new ClonerError(`Repository not found: ${repoUrl}`, "not_found");
       }
