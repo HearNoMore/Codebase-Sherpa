@@ -13,7 +13,7 @@ The full specification is in `int-docs/CODEBASE-SHERPA.md` — read it before st
 - **Monorepo**: npm workspaces (`packages/frontend`, `packages/backend`)
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + React Flow + dagre
 - **Backend**: Node.js + Express + TypeScript + Prisma + SQLite
-- **LLM**: Claude API via `@anthropic-ai/sdk` — model `claude-sonnet-4-20250514`
+- **LLM**: Claude API via `@anthropic-ai/sdk` — model `claude-sonnet-4-6`
 
 ## Common Commands
 
@@ -41,8 +41,12 @@ cd packages/backend && npm run build   # prisma generate + tsc
 cd packages/frontend && npm run build  # vite build
 
 # Database
-cd packages/backend && npm run db:push    # apply schema changes
-cd packages/backend && npm run db:studio  # Prisma Studio UI
+cd packages/backend && npm run db:push       # apply schema changes
+cd packages/backend && npm run db:studio     # Prisma Studio UI
+cd packages/backend && npm run prisma:setup  # generate client + push (first-time setup)
+
+# Run the full pipeline from CLI (requires ANTHROPIC_API_KEY in .env)
+npm run pipeline:run -w packages/backend -- https://github.com/owner/repo
 ```
 
 ## Architecture
@@ -119,4 +123,4 @@ Always query Context7 docs before implementing against these libraries:
 - **Frontend** → Vercel (root: `packages/frontend`, env: `VITE_API_URL`)
 - **Backend** → Railway (root: `packages/backend`, env: `ANTHROPIC_API_KEY`, `DATABASE_URL=file:/data/codebase-sherpa.db`, `FRONTEND_URL`, `PORT=3000`)
 - Railway needs a persistent volume mounted at `/data` for SQLite to survive redeployments
-- Backend `postinstall` runs `prisma generate && prisma db push` automatically on each deploy
+- On Railway, add a `postinstall` script or a start hook: `npx prisma generate && npx prisma db push` (don't add this locally — it requires DATABASE_URL in env)
